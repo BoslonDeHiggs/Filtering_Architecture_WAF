@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  router:
+    image: ubuntu
+    container_name: router
+    privileged: true
+    networks:
+      public_net:
+        ipv4_address: 172.42.1.254 # Gateway for public_net: eth2
+      dmz_net:
+        ipv4_address: 192.168.1.254 # Gateway for dmz_net: eth0
+      private_net:
+        ipv4_address: 192.168.2.254 # Gateway for private_net: eth1
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 iptables net-tools tcpdump &&
+                      echo 1 > /proc/sys/net/ipv4/ip_forward &&
+                      iptables -t nat -A POSTROUTING -o eth2 -j MASQUERADE &&
+                      iptables -A FORWARD -o eth2 -j ACCEPT &&
+                      iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT &&
+                      iptables -A FORWARD -i eth2 -d 192.168.1.100 -j DROP &&
+                      iptables -A FORWARD -i eth2 -p tcp --dport 80 -j ACCEPT &&
+                      iptables -A FORWARD -o eth1 -j DROP &&
+                      tail -f /dev/null"
+
+  waf:
+    image: ubuntu 
+    container_name: waf
+    privileged: true
+    networks:
+      dmz_net:
+        ipv4_address: 192.168.1.150
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools apache2 &&
+                      a2enmod proxy && a2enmod proxy_http &&
+                      ip route del default &&
+                      ip route add default via 192.168.1.254 &&
+                      service apache2 restart &&
+                      tail -f /dev/null"
+                      # docker cp mysite.conf waf:/etc/apache2/sites-available/
+                      # docker exec -it waf a2ensite mysite.conf
+                      # docker exec -it waf a2enmod rewrite
+                      # docker exec -it waf service apache2 restart
+
+  app_client:
+    image: ubuntu
+    container_name: app_client
+    privileged: true
+    networks:
+      public_net:
+        ipv4_address: 172.42.1.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools traceroute curl &&
+                      ip route del default &&
+                      ip route add default via 172.42.1.254 &&
+                      tail -f /dev/null"
+
+  web_server:
+    image: nginx
+    container_name: web_server
+    privileged: true
+    networks:
+      dmz_net:
+        ipv4_address: 192.168.1.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools traceroute &&
+                      ip route del default &&
+                      ip route add default via 192.168.1.150 &&
+                      ip route add 192.168.2.0/24 via 192.168.1.254 &&
+                      nginx &
+                      tail -f /dev/null"
+
+  local_client:
+    image: ubuntu
+    container_name: local_client
+    privileged: true
+    networks:
+      private_net:
+        ipv4_address: 192.168.2.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools traceroute curl &&
+                      ip route del default &&
+                      ip route add default via 192.168.2.254 &&
+                      tail -f /dev/null"
+
+networks:
+  public_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.42.1.0/24
+  dmz_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+  private_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.2.0/24

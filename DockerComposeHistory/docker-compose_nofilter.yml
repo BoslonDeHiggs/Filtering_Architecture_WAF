@@ -1,0 +1,72 @@
+version: '3.9'
+
+services:
+  router:
+    image: ubuntu
+    container_name: router
+    privileged: true
+    networks:
+      public_net:
+        ipv4_address: 172.42.1.254 # Gateway for public_net: eth2
+      dmz_net:
+        ipv4_address: 192.168.1.254 # Gateway for dmz_net: eth0
+      private_net:
+        ipv4_address: 192.168.2.254 # Gateway for private_net: eth1
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 iptables net-tools tcpdump &&
+                      echo 1 > /proc/sys/net/ipv4/ip_forward &&
+                      iptables -t nat -A POSTROUTING -o eth2 -j MASQUERADE &&
+                      tail -f /dev/null"
+
+  app_client:
+    image: ubuntu
+    container_name: app_client
+    privileged: true
+    networks:
+      public_net:
+        ipv4_address: 172.42.1.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools curl &&
+                      ip route del default &&
+                      ip route add default via 172.42.1.254 &&
+                      tail -f /dev/null"
+
+  web_server:
+    image: nginx
+    container_name: web_server
+    privileged: true
+    networks:
+      dmz_net:
+        ipv4_address: 192.168.1.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools &&
+                      ip route del default &&
+                      ip route add default via 192.168.1.254 &&
+                      nginx &
+                      tail -f /dev/null"
+
+  local_client:
+    image: ubuntu
+    container_name: local_client
+    privileged: true
+    networks:
+      private_net:
+        ipv4_address: 192.168.2.100
+    command: bash -c "apt update && apt install -y iputils-ping iproute2 net-tools curl &&
+                      ip route del default &&
+                      ip route add default via 192.168.2.254 &&
+                      tail -f /dev/null"
+
+networks:
+  public_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.42.1.0/24
+  dmz_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+  private_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.2.0/24
