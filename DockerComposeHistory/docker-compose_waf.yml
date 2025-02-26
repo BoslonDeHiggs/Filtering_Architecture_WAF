@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   router:
     image: ubuntu
@@ -26,6 +24,8 @@ services:
     image: ubuntu 
     container_name: waf
     privileged: true
+    volumes:
+      - ./mysite.conf:/etc/apache2/sites-available/mysite.conf
     networks:
       dmz_net:
         ipv4_address: 192.168.1.150
@@ -33,12 +33,10 @@ services:
                       a2enmod proxy && a2enmod proxy_http &&
                       ip route del default &&
                       ip route add default via 192.168.1.254 &&
+                      a2ensite mysite.conf &&
+                      a2enmod rewrite &&
                       service apache2 restart &&
                       tail -f /dev/null"
-                      # docker cp mysite.conf waf:/etc/apache2/sites-available/
-                      # docker exec -it waf a2ensite mysite.conf
-                      # docker exec -it waf a2enmod rewrite
-                      # docker exec -it waf service apache2 restart
 
   app_client:
     image: ubuntu
